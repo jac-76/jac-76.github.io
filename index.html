@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jac-76 — Linux engineer running AI on the edge</title>
+<meta name="description" content="Self-taught Linux engineer. I deploy Whisper ASR and LLMs on AMD Ryzen AI NPUs — end to end, from the driver stack to an OpenAI-compatible API.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #262b36;
+    --text: #e6e9ef;
+    --muted: #9aa3b2;
+    --accent: #4fd1c5;
+    --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    max-width: 800px; margin: 0 auto; padding: 3rem 1.5rem 5rem;
+  }
+  header { margin-bottom: 3rem; }
+  .kicker { font-family: var(--mono); color: var(--accent); font-size: .85rem; }
+  h1 { font-size: 2.2rem; margin: .5rem 0 1rem; }
+  p.lead { color: var(--muted); font-size: 1.05rem; }
+  h2 { font-size: 1.1rem; margin: 2.5rem 0 1rem; color: var(--accent); font-family: var(--mono); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.25rem; display: flex; flex-direction: column; gap: .5rem;
+    text-decoration: none; color: var(--text); transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card .title { font-weight: 600; }
+  .card .desc { color: var(--muted); font-size: .9rem; }
+  .card .tag { font-family: var(--mono); font-size: .75rem; color: var(--accent); }
+  .links { display: flex; gap: 1.5rem; margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
+  .links a { color: var(--accent); font-family: var(--mono); font-size: .9rem; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  code { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .15rem .4rem; font-family: var(--mono); font-size: .85em; }
+  pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 1rem 0; font-family: var(--mono); font-size: .85rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="kicker">~ jac-76 ~</div>
+  <h1>Linux engineer running AI on AMD Ryzen NPUs</h1>
+  <p class="lead">Self-taught Linux engineer. I deploy Whisper ASR and LLMs on <strong>AMD Ryzen AI NPU hardware</strong> — end to end, from the kernel driver stack to an OpenAI-compatible API. Hands-on, hardware-near, and fully local.</p>
+</header>
+
+<section>
+  <h2># flagship_writeup</h2>
+  <p class="lead" style="margin-bottom:1rem">Running Whisper + LLMs on an AMD NPU under Linux — the full journey: XRT/amdxdna driver bring-up, FastFlowLM runtime, and an OpenAI-compatible ASR server hitting RTF ≈ 0.19.</p>
+  <p><em>Blog post link goes here once published.</em></p>
+</section>
+
+<section>
+  <h2># projects</h2>
+  <div class="grid" id="projects"></div>
+</section>
+
+<div class="links">
+  <a href="https://github.com/jac-76">github</a>
+  <a href="mailto:jac-76@live.com">email</a>
+</div>
+
+<script>
+const projects = [
+  {
+    title: "npu-whisper",
+    desc: "One-shot Whisper ASR on the AMD NPU — auto-starts the FastFlowLM server and transcribes any audio via an OpenAI-compatible API.",
+    tag: "NPU · ASR · Linux",
+    url: "https://github.com/jac-76/npu-whisper"
+  },
+  {
+    title: "local-ai-assistant",
+    desc: "Voice → NPU Whisper → on-NPU LLM → TTS: a fully offline local AI assistant chaining open tools on Ryzen AI.",
+    tag: "voice · LLM · local",
+    url: "https://github.com/jac-76/local-ai-assistant"
+  }
+];
+const grid = document.getElementById("projects");
+projects.forEach(p => {
+  const a = document.createElement("a");
+  a.className = "card";
+  a.href = p.url;
+  a.target = "_blank";
+  a.innerHTML = `<div class="title">${p.title}</div><div class="desc">${p.desc}</div><div class="tag">${p.tag}</div>`;
+  grid.appendChild(a);
+});
+</script>
+</body>
+</html>

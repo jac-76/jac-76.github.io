@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Joseph Austin Chasar — Résumé</title>
+<meta name="description" content="Self-taught Linux engineer. Deployed Whisper ASR + LLMs on an AMD Ryzen AI NPU end-to-end. Seeking a junior MLOps / DevOps / Linux role.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  :root{--bg:#0f1115;--card:#171a21;--border:#262b36;--text:#e6e9ef;
+    --muted:#9aa3b2;--accent:#4fd1c5;--mono:"JetBrains Mono","Fira Code",ui-monospace,monospace}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);
+    color:var(--text);line-height:1.6;max-width:760px;margin:0 auto;padding:3rem 1.5rem 6rem}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .backlink{font-family:var(--mono);font-size:.85rem;display:inline-block;margin-bottom:2rem}
+  h1{font-size:1.9rem;margin:0 0 .25rem}
+  .role{font-weight:600;color:var(--text)}
+  .contact{color:var(--muted);font-size:.9rem;margin:.5rem 0 0;font-family:var(--mono)}
+  .contact a{color:var(--muted)}
+  .contact a:hover{color:var(--accent)}
+  h2{font-size:1.05rem;margin:2.25rem 0 .6rem;color:var(--accent);font-family:var(--mono)}
+  h2::before{content:"# "}
+  p{margin:0 0 .6rem}
+  ul{margin:.25rem 0 .9rem;padding-left:1.3rem}
+  li{margin:.25rem 0}
+  .job{font-weight:600;margin:1rem 0 0}
+  .job .meta{font-weight:400;color:var(--muted)}
+  .sub{color:var(--muted);font-style:italic;font-size:.9rem;margin:.1rem 0 0}
+  code{font-family:var(--mono);font-size:.85em;background:var(--card);border:1px solid var(--border);
+    border-radius:5px;padding:.05rem .3rem}
+  .print{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-top:2.5rem;
+    border-top:1px solid var(--border);padding-top:1.25rem}
+</style>
+</head>
+<body>
+<a class="backlink" href="/">← jac-76</a>
+
+<h1>Joseph Austin Chasar</h1>
+<p class="role">Linux Engineer — self-taught, system-level</p>
+<p class="contact">Broadview Heights, OH &nbsp;·&nbsp;
+<a href="mailto:jac-76@live.com">jac-76@live.com</a> &nbsp;·&nbsp;
+<a href="https://github.com/jac-76">github.com/jac-76</a> &nbsp;·&nbsp;
+<a href="https://www.linkedin.com/in/joseph-chasar-802536433">linkedin.com/in/joseph-chasar-802536433</a></p>
+
+<h2>Summary</h2>
+<p>Self-taught Linux engineer who deployed Whisper ASR and LLMs on an AMD Ryzen AI
+NPU end-to-end — kernel driver stack (<code>amdxdna</code> / XRT) through runtime
+to an OpenAI-compatible API — on Arch Linux, then shipped it as three public
+tools, a benchmark harness, and a technical write-up. Works at the layer where
+userspace meets hardware: kernel modules, DKMS, systemd, udev, core-dump
+debugging. Twenty-plus years building and repairing PCs; prior careers in
+regulated mortgage lending and running a solo business. Seeking a junior MLOps /
+DevOps / Linux or backend-Python role.</p>
+
+<h2>Technical Skills</h2>
+<ul>
+<li><strong>Linux internals:</strong> systemd (services, <code>--user</code> units,
+<code>environment.d</code>), udev rules, polkit, DKMS out-of-tree modules,
+<code>/sys</code> &amp; <code>/proc</code>, rlimits (<code>memlock</code>), RAPL
+power counters, coredumpctl / core-dump backtrace analysis, ACPI/EC platform
+drivers, PipeWire, Wayland, Arch + AUR (<code>makepkg</code>)</li>
+<li><strong>AI / ML runtime:</strong> AMD Ryzen AI NPU (XDNA2), FastFlowLM,
+Whisper (<code>large-v3-turbo</code>), local LLM serving (gemma3, qwen3, llama3
+class), OpenAI-compatible <code>/v1</code> APIs, piper TTS, RTF &amp; energy
+benchmarking</li>
+<li><strong>Languages:</strong> Python (stdlib-first: <code>argparse</code>,
+<code>urllib</code>, <code>subprocess</code>, <code>unittest</code>), Bash
+(strict-mode scripting), basic SQL</li>
+<li><strong>Tooling &amp; ops:</strong> Git / GitHub (gh CLI, GitHub Pages, daily
+commits), <code>curl</code> / HTTP debugging, <code>ffmpeg</code>/<code>ffprobe</code>,
+<code>cmake</code>, <code>pytest</code></li>
+<li><strong>Learning now:</strong> Docker, GitHub Actions CI, Kubernetes basics,
+cloud (AWS)</li>
+</ul>
+
+<h2>Projects</h2>
+
+<p class="job"><a href="https://github.com/jac-76/local-ai-assistant">local-ai-assistant</a> <span class="meta">— offline voice assistant on the AMD NPU · Python (stdlib only)</span></p>
+<ul>
+<li>Chains mic capture (<code>pw-record</code>) → Whisper ASR on the NPU → on-NPU
+LLM → piper TTS, all local, from a single FastFlowLM server on one port.</li>
+<li>Clean CLI; conversation history persists across runs as JSON under XDG state.
+Found and fixed a silent-audio bug; test suite grown to 11 mock-based cases.</li>
+</ul>
+
+<p class="job"><a href="https://github.com/jac-76/npu-whisper">npu-whisper</a> <span class="meta">— one-shot Whisper transcription on the NPU · Bash, zero deps</span></p>
+<ul>
+<li>Auto-starts the FastFlowLM ASR server if down, waits for readiness, posts the
+audio, prints text or <code>--json</code>; <code>--status</code> /
+<code>--stop</code> lifecycle control.</li>
+<li>Ships <code>bench.py</code> / <code>bench_cpu.py</code> (stdlib): time real
+runs, take audio length from <code>ffprobe</code>, read RAPL energy counters.
+Measured: 30 s clip in ~5.2 s on the NPU (<strong>RTF ≈ 0.17</strong>) at
+<strong>~10× lower energy</strong> than the same model on CPU.</li>
+</ul>
+
+<p class="job"><a href="/blog/running-whisper-llms-on-an-amd-npu-under-linux.html">“Running Whisper + LLMs on an AMD NPU under Linux”</a> <span class="meta">— technical write-up</span></p>
+<ul>
+<li>End-to-end guide to a Windows-documented workflow on Linux: the
+<code>amdxdna</code> + XRT driver stack, the <code>memlock</code> gotcha,
+FastFlowLM as the shortcut past the Ryzen AI SDK, and reproducible benchmarks.</li>
+</ul>
+
+<h2>Experience</h2>
+
+<p class="job">Independent Linux / ML-Infrastructure Engineering <span class="meta">— Self-directed — 2026–Present</span></p>
+<p class="sub">Personal MSI Stealth A16 AI+ (Ryzen AI 9 365) Arch workstation.</p>
+<ul>
+<li>Brought Whisper ASR and small LLMs up on an AMD Ryzen AI NPU end-to-end
+(kernel driver stack → FastFlowLM runtime → OpenAI-compatible API); shipped it as
+three public repos with tests and daily commits.</li>
+<li>Built a reproducible benchmark + RAPL power-measurement harness — quantified
+the NPU at RTF ≈ 0.17 and ~10× lower energy per transcription than CPU — plus a
+technical write-up of the whole stack.</li>
+<li>Root-caused a recurring third-party <code>SIGSEGV</code> from a
+<code>systemd-coredump</code> core dump to a tokio / PyO3 teardown race; shipped
+an idempotent launcher guard as the fix.</li>
+<li>Stood up an out-of-tree DKMS EC driver and reverse-engineered a vendor HID
+protocol (SteelSeries <code>1038:1122</code>) for keyboard control; isolated a
+kernel-level input-drop bug with <code>evtest</code> on raw <code>/dev/input</code>.</li>
+</ul>
+
+<p class="job">Barber <span class="meta">— Self-Employed — Broadview Heights, OH — 2021–Present</span></p>
+<ul>
+<li>Run a solo appointment-based service business end to end: online booking,
+scheduling, client retention, and bookkeeping, with minimal no-shows.</li>
+<li>Third-generation barber, Ohio-licensed since 2012; keep current on state
+licensure and continuing-education requirements.</li>
+</ul>
+
+<p class="job">Mortgage Loan Originator <span class="meta">— CrossCountry Mortgage (remote) — 2020–2021</span></p>
+<ul>
+<li>Took residential-mortgage clients through the full regulated process: pulled
+credit, verified income and assets, priced loan programs, guided applicants
+through underwriting to close.</li>
+<li>Ran a high-volume pipeline entirely remotely, coordinating with processors
+and underwriters through CRM and digital document systems.</li>
+</ul>
+
+<p class="job">Barber <span class="meta">— Self-Employed — Broadview Heights, OH — 2016–2020</span></p>
+<ul>
+<li>Ran the same solo barbering practice between mortgage-origination roles:
+appointment booking, scheduling, client retention, and bookkeeping.</li>
+<li>Maintained Ohio licensure and continuing-education requirements throughout.</li>
+</ul>
+
+<p class="job">Mortgage Loan Originator <span class="meta">— Quicken Loans — 2015–2016</span></p>
+<ul>
+<li>Licensed MLO (passed the NMLS national SAFE exam, 84th percentile);
+originated residential loans by phone against volume targets.</li>
+</ul>
+
+<p class="job">Independent Computer Repair &amp; Support <span class="meta">— Word-of-mouth — 2003–2015</span></p>
+<ul>
+<li>Data recovery, hardware diagnosis and component-level repair, malware
+removal, and laptop repair (display, keyboard, thermal, storage) for individuals
+and small offices.</li>
+<li>OS imaging and deployment; new-system builds and upgrades.</li>
+</ul>
+
+<p class="job">Warehouse &amp; Inside Sales <span class="meta">— GE Supply (General Electric) — Cleveland, OH — 2002–2003</span></p>
+<ul>
+<li>Filled and shipped orders for industrial accounts (Timken, Marconi); operated
+a forklift to load/unload trucks and stage will-call orders.</li>
+<li>Received and verified incoming inventory, keyed orders into the inventory
+system, backed up the outside sales team on stock checks and order entry.</li>
+</ul>
+
+<h2>Education</h2>
+<ul>
+<li><strong>GED</strong></li>
+<li><strong>Allstate Barber College</strong> — 2011</li>
+</ul>
+
+<h2>Certifications &amp; Licenses</h2>
+<ul>
+<li><strong>NMLS Mortgage Loan Originator</strong> — passed the national SAFE
+exam, 84th percentile (NMLS ID 1523002) <em>(inactive)</em></li>
+<li><strong>Ohio Barber License</strong> — #055179 (licensed 2012)</li>
+</ul>
+
+<p class="print">Phone available on request. PDF copy sent with direct applications.</p>
+
+</body>
+</html>

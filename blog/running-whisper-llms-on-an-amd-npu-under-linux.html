@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Whisper + LLMs on an AMD NPU under Linux — jac-76</title>
+<meta name="description" content="Deploying whisper-large-v3-turbo and LLMs on an AMD Ryzen AI (XDNA2) NPU under Arch Linux, end to end — driver stack, the memlock gotcha, FastFlowLM, and a measured NPU-vs-CPU energy comparison.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  :root{--bg:#0f1115;--card:#171a21;--border:#262b36;--text:#e6e9ef;
+    --muted:#9aa3b2;--accent:#4fd1c5;--mono:"JetBrains Mono","Fira Code",ui-monospace,monospace}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);
+    color:var(--text);line-height:1.65;max-width:760px;margin:0 auto;padding:3rem 1.5rem 6rem}
+  a{color:var(--accent)}
+  h1{font-size:2rem;line-height:1.25;margin:.5rem 0 1rem}
+  h2{font-size:1.3rem;margin:2.5rem 0 .75rem;color:var(--accent);font-family:var(--mono)}
+  h3{font-size:1.05rem;margin:1.75rem 0 .5rem}
+  p,ul,ol{margin:0 0 1rem}
+  ul,ol{padding-left:1.4rem}
+  li{margin:.3rem 0}
+  blockquote{border-left:3px solid var(--accent);padding:.5rem 0 .5rem 1rem;margin:0 0 1.25rem;
+    color:var(--muted)}
+  blockquote p:last-child{margin-bottom:0}
+  code{font-family:var(--mono);font-size:.87em;background:var(--card);border:1px solid var(--border);
+    border-radius:5px;padding:.1rem .35rem}
+  pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;
+    overflow-x:auto;margin:0 0 1.25rem;font-size:.82rem;line-height:1.5}
+  pre code{background:none;border:0;padding:0;font-size:1em}
+  table{border-collapse:collapse;width:100%;margin:0 0 1.25rem;font-size:.9rem;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--border);padding:.45rem .7rem;text-align:left;vertical-align:top}
+  th{background:var(--card);font-family:var(--mono);font-size:.82rem}
+  hr{border:0;border-top:1px solid var(--border);margin:2.5rem 0}
+  .backlink{font-family:var(--mono);font-size:.85rem;margin-bottom:2rem;display:inline-block}
+  .meta{color:var(--muted);font-size:.9rem;margin:-.5rem 0 2rem}
+</style>
+</head>
+<body>
+<a class="backlink" href="/">← jac-76</a>
+<h1>Running Whisper + LLMs on an AMD NPU under Linux</h1>
+<blockquote><p><strong>TL;DR</strong> — On a MSI Stealth A16 AI+ (Ryzen AI 9 365, XDNA2 NPU) running Arch, I got OpenAI&#x27;s <code>whisper-large-v3-turbo</code> transcribing on the <strong>NPU</strong> — not the CPU, not the GPU — at <strong>RTF ≈ 0.18</strong> (a 30 s clip in ~5.2 s) for roughly a <strong>tenth of the energy</strong> the same job costs on the CPU, plus an LLM answering on the same NPU through an OpenAI-compatible API. The whole path is local and offline. This is the write-up of the driver stack, the one real gotcha (memlock), and the runtime that made it a 20-minute job instead of a weekend.</p></blockquote>
+<hr>
+<h2>Why this is worth writing down</h2>
+<p>AMD&#x27;s &quot;Ryzen AI&quot; NPU (the XDNA / XDNA2 block in Phoenix / Hawk Point / Strix Point laptops) is marketed almost entirely around Windows: the Ryzen AI SDK, the ONNX Runtime <strong>VitisAI</strong> execution provider, Lemonade, and the demos all assume you&#x27;re on Windows with the official stack. On Linux the picture in early 2026 is better than most people think — the NPU driver has been <strong>in the mainline kernel</strong> as <code>amdxdna</code> since 6.14 — but the &quot;load a real model and run it&quot; story still isn&#x27;t well documented.</p>
+<p>Here&#x27;s what actually worked, end to end.</p>
+<h3>The hardware</h3>
+<table><thead><tr><th>Part</th><th>Detail</th></tr></thead><tbody>
+<tr><td>Laptop</td><td>MSI Stealth A16 AI+ A3HVGG</td></tr>
+<tr><td>APU</td><td>AMD Ryzen AI 9 365 (Strix Point)</td></tr>
+<tr><td>NPU</td><td>XDNA2, 8 columns, exposed as <code>/dev/accel/accel0</code></td></tr>
+<tr><td>NPU firmware</td><td><code>1.1.2.64</code></td></tr>
+<tr><td>Kernel</td><td>7.1.9-arch1 (<code>amdxdna</code> in-tree)</td></tr>
+<tr><td>OS</td><td>Omarchy (Arch Linux)</td></tr>
+</tbody></table>
+<p>AMD quotes the Strix Point NPU at <a href="https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-9-365.html">up to 50 TOPS, INT8</a>.</p>
+<hr>
+<h2>1. The driver stack</h2>
+<p>Three pieces have to be in place before any runtime can touch the NPU:</p>
+<ol>
+<li><strong><code>amdxdna</code></strong> — the kernel driver. In-tree from Linux 6.14; it&#x27;s what creates <code>/dev/accel/accel0</code>. Check it&#x27;s bound:<pre><code>$ ls /dev/accel/
+accel0
+$ dmesg | grep -i amdxdna</code></pre></li>
+<li><strong>XRT</strong> (Xilinx/AMD Runtime) + the <strong><code>xrt-plugin-amdxdna</code></strong> shim. XRT is the userspace API; the plugin teaches it about the XDNA device. On Arch both are in <code>extra</code>: You want a <code>Device(s) Present</code> line with a <code>RyzenAI-npu*</code> name. If XRT is installed but the plugin isn&#x27;t, <code>xrt-smi</code> runs but that table is empty. <code>xrt-smi examine --report platform</code> then shows <code>Total Columns : 8</code> — the XDNA2 array this SoC exposes.<pre><code>$ sudo pacman -S xrt xrt-plugin-amdxdna
+$ xrt-smi examine
+...
+XRT
+Version              : 2.21.75
+NPU Firmware Version  : 1.1.2.64
+
+Device(s) Present
+|BDF             |Name          |
+|----------------|--------------|
+|[0000:66:00.1]  |RyzenAI-npu4  |</code></pre></li>
+<li><strong>Versions that worked here:</strong> <code>xrt 2.21.75</code>, <code>xrt-plugin-amdxdna</code> (same release), NPU firmware <code>1.1.2.64</code>, and <code>flm validate</code> reporting the <code>amdxdna</code> driver interface as <strong>0.8</strong>.</li>
+</ol>
+<h3>The one real gotcha: memlock</h3>
+<p>The NPU runtime pins model weights into physical RAM, so the calling user needs an <strong>unlimited memlock rlimit</strong>. The default (usually 8 MiB or 64 MiB) is nowhere near enough and the failure mode is an unhelpful allocation error deep in the runtime.</p>
+<pre><code>$ sudo tee -a /etc/security/limits.conf &lt;&lt;&lt; &quot;$USER soft memlock unlimited&quot;
+$ sudo tee -a /etc/security/limits.conf &lt;&lt;&lt; &quot;$USER hard memlock unlimited&quot;
+# log out and back in</code></pre>
+<p>You want to see this afterwards:</p>
+<pre><code>$ ulimit -l
+unlimited</code></pre>
+<hr>
+<h2>2. The shortcut: FastFlowLM instead of the Ryzen AI SDK</h2>
+<p>The &quot;official&quot; Linux route is: build ONNX Runtime with the VitisAI EP, install the Ryzen AI SDK bits, quantize your model to the NPU&#x27;s format, wrangle a Python venv full of <code>onnxruntime-vitisai</code> and Vitis tooling. It&#x27;s a lot, and much of it is Windows-first.</p>
+<p><strong><a href="https://fastflowlm.com/">FastFlowLM</a></strong> (<code>flm</code>) skips all of that. It&#x27;s a NPU-first runtime (Rust/C++) that ships <strong>prebuilt xclbins</strong> (the NPU binary kernels) and <code>libwhisper_npu.so</code> in the package itself:</p>
+<pre><code>$ ls /usr/share/flm/xclbins/
+encoder_attn  encoder_dequant  encoder_mm  whisper_head  ...
+$ flm --version
+FLM v1.0.2</code></pre>
+<p>Because the kernels are bundled, <strong>there is no onnxruntime-vitisai / Ryzen AI SDK venv to build</strong>. (Arch&#x27;s stock <code>python-onnxruntime-cpu</code> only has <code>CPUExecutionProvider</code> anyway — irrelevant here.) On Arch: <code>sudo pacman -S fastflowlm</code>.</p>
+<p>Validate the whole stack in one shot:</p>
+<pre><code>$ flm validate
+[Linux]  Kernel: 7.1.9-arch1-2
+[Linux]  NPU: /dev/accel/accel0 with 8 columns
+[Linux]  NPU FW Version: 1.1.2.64
+[Linux]  amdxdna version: 0.8
+[Linux]  Memlock Limit: infinity</code></pre>
+<p>All green = ready. If <code>Memlock Limit</code> says anything other than <code>infinity</code>, go back to the limits.conf step.</p>
+<hr>
+<h2>3. Whisper on the NPU</h2>
+<p>Pull the model — <code>whisper-v3:turbo</code> is <code>large-v3-turbo</code> quantized for XDNA2:</p>
+<pre><code>$ flm pull whisper-v3:turbo
+# ~650 MB: model.q4nx + tokenizers -&gt; ~/.config/flm/models/Whisper-V3-Turbo-NPU2/</code></pre>
+<p>Serve it. On FLM 1.0.2+ Whisper loads <strong>standalone</strong> — older docs claimed you had to co-load an LLM, but you don&#x27;t:</p>
+<pre><code>$ flm serve --asr 1          # OpenAI-compatible server on :52625</code></pre>
+<p>Transcribe over the HTTP API (anything <code>ffmpeg</code> can decode — wav/mp3/ogg/m4a/flac):</p>
+<pre><code>$ curl http://127.0.0.1:52625/v1/audio/transcriptions \
+    -F &quot;file=@audio.ogg&quot; \
+    -F &quot;model=whisper-v3&quot;</code></pre>
+<p>There&#x27;s also a CLI path: <code>flm run &lt;model&gt; --asr 1</code>, then <code>/input &quot;clip.mp3&quot;</code> in the chat prompt.</p>
+<h3>Results</h3>
+<p>Benchmarked with the bundled <code>bench.py</code> — 10 runs, first 2 discarded as warm-up, audio length read from the file via <code>ffprobe</code> so the RTF is honest and reproducible:</p>
+<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>
+<tr><td>Audio length</td><td>30.0 s (JFK, Rice University speech excerpt)</td></tr>
+<tr><td>Transcription wall time (warm)</td><td><strong>5.2 s</strong> (σ 0.04 s within a run; 5.17–5.6 s across sessions)</td></tr>
+<tr><td><strong>Real-time factor (RTF)</strong></td><td><strong>≈ 0.17–0.19</strong></td></tr>
+<tr><td>Transcript accuracy</td><td>correct, verbatim</td></tr>
+</tbody></table>
+<p>Roughly <strong>5–6× faster than real time</strong>. Within a single benchmark the spread is under 1%; between sessions the mean drifts a few hundred ms with machine temperature and background load.</p>
+<h3>Is it actually on the NPU?</h3>
+<p>Two checks. First, the FLM log prints <code>[NPU Locked!]</code> when a job starts and <code>[NPU Lock Released!]</code> when it finishes. Second — and more convincing — sample system load while the benchmark runs and see that nothing else is doing the work:</p>
+<table><thead><tr><th>Device</th><th>Idle baseline</th><th>During 10 transcriptions</th></tr></thead><tbody>
+<tr><td>CPU (20 threads, system-wide)</td><td>2.2 %</td><td><strong>4.3 %</strong> mean, 14.4 % peak</td></tr>
+<tr><td>iGPU (Radeon 890M)</td><td>7 %</td><td><strong>10 %</strong> mean, 15 % peak</td></tr>
+<tr><td>dGPU (RTX 4070)</td><td>0 %</td><td><strong>0 %</strong></td></tr>
+</tbody></table>
+<p>The CPU rises about two points over idle — that&#x27;s the <code>curl</code>/harness overhead and the server&#x27;s I/O thread, not inference. The iGPU delta is desktop compositing (Hyprland renders on the 890M), and the discrete GPU is never touched at all. The 30 seconds of audio is being processed somewhere that doesn&#x27;t show up in any of these three counters, which is exactly the point: the CPU and both GPUs stay free while the NPU works.</p>
+<h3>What the NPU actually buys you: energy</h3>
+<p>Speed alone isn&#x27;t the story — <code>whisper-large-v3-turbo</code> has a tiny decoder and runs fine on CPU. So I built <code>whisper.cpp</code> from source (the Arch package&#x27;s ggml backend is currently broken) and ran the <strong>same 30 s clip through the same model</strong> on the CPU, tuned to 16 threads, reading the RAPL energy counters (<code>/sys/class/powercap/intel-rapl:0</code>) around every run.</p>
+<table><thead><tr><th></th><th><strong>NPU</strong> (FastFlowLM)</th><th><strong>CPU</strong> (whisper.cpp, <code>-t 16</code>)</th></tr></thead><tbody>
+<tr><td>Wall time (30 s clip)</td><td>~5.3 s</td><td>~6.5 s</td></tr>
+<tr><td>RTF</td><td>0.18</td><td>0.22</td></tr>
+<tr><td>CPU-package power while running</td><td>~20 W</td><td>~73 W</td></tr>
+<tr><td>CPU-<em>core</em> power while running</td><td>~0.8 W</td><td>~10 W</td></tr>
+<tr><td><strong>Energy per transcription, over idle</strong></td><td><strong>~45 J</strong></td><td><strong>~410 J</strong></td></tr>
+<tr><td>Energy per transcription, total package</td><td>~105 J</td><td>~478 J</td></tr>
+</tbody></table>
+<p>The wall-clock win is modest — about 25%. The <strong>energy</strong> difference is the point: transcribing that clip on the NPU costs roughly <strong>an order of magnitude less energy</strong> than doing it on the CPU (~45 J vs ~410 J above idle). Package power rises ~10 W instead of ~60 W, the CPU cores never leave idle, and the fans stay quiet. Per hundred transcriptions that&#x27;s about 1 W·h versus 11 W·h — and 20 CPU threads left free the whole time.</p>
+<p><em>(Measured on a live desktop, so absolute wattages drift a few watts between runs with background activity — &quot;energy over idle&quot; is the stable figure and what the comparison rests on. <code>whisper-cli</code> also reloads the 1.6 GB model each run, which pads its wall time slightly but not its energy. Both harnesses are in the <a href="https://github.com/jac-76/npu-whisper">npu-whisper</a> repo: <code>bench.py --power</code> for the NPU column, <code>bench_cpu.py</code> for the CPU column.)</em></p>
+<hr>
+<h2>4. An LLM on the same NPU</h2>
+<p>FLM serves LLMs on the NPU through the same OpenAI-compatible surface. Its model catalogue covers the usual small-to-mid open weights:</p>
+<pre><code>$ flm list
+  gemma3:1b        ✅
+  qwen3:1.7b       ⏬
+  llama3.2:3b      ⏬
+  phi4-mini-it:4b  ⏬
+  deepseek-r1:8b   ⏬
+  gpt-oss:20b      ⏬
+  whisper-v3:turbo ✅
+  ...</code></pre>
+<p>One server can expose <strong>both</strong> ASR and chat:</p>
+<pre><code>$ flm serve gemma3:1b --asr 1
+$ curl http://127.0.0.1:52625/v1/chat/completions \
+    -H &#x27;content-type: application/json&#x27; \
+    -d &#x27;{&quot;model&quot;:&quot;gemma3:1b&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;hello&quot;}]}&#x27;</code></pre>
+<p>So <code>/v1/audio/transcriptions</code> and <code>/v1/chat/completions</code> are both live on <code>:52625</code> from a single process on the NPU.</p>
+<hr>
+<h2>5. Tying it together — two small tools</h2>
+<p>With the endpoint working, the rest is glue:</p>
+<ul>
+<li><strong><a href="https://github.com/jac-76/npu-whisper"><code>npu-whisper</code></a></strong> — a zero-dependency Bash wrapper: run it on an audio file and it auto-starts <code>flm serve --asr 1</code> if it&#x27;s down, waits for readiness, <code>curl</code>s the transcript, and leaves the server warm. <code>--json</code>, <code>--status</code>, <code>--stop</code>.</li>
+<li><strong><a href="https://github.com/jac-76/local-ai-assistant"><code>local-ai-assistant</code></a></strong> — a fully offline voice assistant, stdlib-only Python: <code>pw-record → Whisper (NPU) → LLM (NPU) → piper TTS → speaker</code>. One FLM server backs the whole chain. <code>chat</code> keeps conversation history across runs.</li>
+</ul>
+<p>Both are deliberately small — the interesting work was getting the NPU to do the inference, not the plumbing on top.</p>
+<hr>
+<h2>Gotchas &amp; rough edges</h2>
+<ul>
+<li><strong>memlock</strong> is the thing that bites everyone first. <code>flm validate</code> catches it.</li>
+<li><strong>FLM version:</strong> 1.0.2 here; 1.0.3 exists but the update notice points at a Windows <code>.msi</code> — 1.0.2 is fine to stay on for Linux.</li>
+<li><strong>Model format is runtime-specific.</strong> These <code>.q4nx</code> weights + bundled xclbins are FastFlowLM&#x27;s; you can&#x27;t point llama.cpp or vanilla ONNX Runtime at them.</li>
+<li><strong>No GPU/CPU fallback worth using.</strong> If the NPU path fails, you&#x27;re better off fixing it than limping along on CPU — <code>whisper.cpp</code> on CPU is far slower for <code>large-v3-turbo</code>.</li>
+<li><strong>Discoverability.</strong> Almost every AMD NPU tutorial is Windows. The Linux <code>amdxdna</code> + XRT + FLM combination works well but you have to assemble it yourself. That&#x27;s the gap this post is trying to close.</li>
+</ul>
+<hr>
+<h2>Reproduce it</h2>
+<pre><code># 1. driver stack
+sudo pacman -S xrt xrt-plugin-amdxdna fastflowlm
+sudo tee -a /etc/security/limits.conf &lt;&lt;&lt; &quot;$USER soft memlock unlimited&quot;
+sudo tee -a /etc/security/limits.conf &lt;&lt;&lt; &quot;$USER hard memlock unlimited&quot;
+# log out / back in
+flm validate            # want: all green, Memlock Limit: infinity
+
+# 2. models
+flm pull whisper-v3:turbo
+flm pull gemma3:1b
+
+# 3. run
+flm serve gemma3:1b --asr 1
+curl http://127.0.0.1:52625/v1/audio/transcriptions -F file=@clip.wav -F model=whisper-v3</code></pre>
+<p>Requirements: a Ryzen AI (XDNA / XDNA2) laptop, kernel ≥ 6.14 with <code>amdxdna</code>, and the memlock bump.</p>
+<hr>
+<hr>
+<p class="meta">Written by jac-76 · <a href="https://github.com/jac-76">github.com/jac-76</a></p>
+</body>
+</html>
